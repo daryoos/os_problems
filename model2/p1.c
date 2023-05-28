@@ -19,35 +19,29 @@ int main(int argc, char **argv)
     sem_t logSem;
     sem_init(&logSem, 1, 0);
 
-    pid_t pid2 = fork();
-    int pipeFd[2];
-    char fileName[512];
-    int len;
+    pid_t pid = fork();
 
-    if (pipe(pipeFd) != 0)
+    int fileLen[100];
+    int pipeFd[2];
+    if (pipeFd != 0)
     {
-        perror("could not create pipe");
+        perror("pipe failed");
         return -1;
     }
 
-    if (pid2 == 0)
+    if (pid == 0)
     {
         // copil
         close(pipeFd[1]); // close write end
-
-        char fileName2[100][512];
-        int len2[100];
+        int totalSize = 0;
         int i = 0;
-
-        read(pipeFd[0], fileName2[i], sizeof(fileName));
-        read(pipeFd[0], &len2[i], sizeof(len));
-
+        read(pipeFd[0], &fileLen[i++], sizeof(int));
         sem_wait(&logSem);
-
         for (int j = 0; j < i; j++)
         {
-            printf("%s    %d\n", fileName2[i], len2[i]);
+            totalSize += fileLen[i];
         }
+        printf("%d", totalSize);
 
         close(pipeFd[0]);
     }
@@ -58,6 +52,7 @@ int main(int argc, char **argv)
 
         char path[512];
         strcpy(path, argv[1]);
+
         DIR *dir = opendir(path);
         if (dir == NULL)
         {
@@ -68,15 +63,11 @@ int main(int argc, char **argv)
         struct dirent *entry;
         char filePath[512];
         int fd;
-
-        while ((entry = readdir(dir)) != NULL)
+        while ((entry = readdir(dir) != NULL))
         {
             strcpy(filePath, path);
             strcat(filePath, "/");
             strcat(filePath, entry->d_name);
-
-            strcpy(fileName, entry->d_name);
-            write(pipeFd[1], fileName, sizeof(fileName));
 
             fd = open(filePath, O_RDONLY);
             if (fd == -1)
@@ -85,14 +76,14 @@ int main(int argc, char **argv)
                 return -1;
             }
 
-            len = lseek(fd, 0, SEEK_END);
-            lseek(fd, 0, SEEK_SET);
-
-            write(pipeFd[1], &len, sizeof(len));
+            int fileLen2 = lseek(fd, 0, SEEK_END);
+            if (fileLen > 0)
+            {
+                write(pipeFd[1], &fileLen2, sizeof(int));
+            }
             close(fd);
         }
         sem_post(&logSem);
-
         close(pipeFd[1]);
         closedir(dir);
     }
